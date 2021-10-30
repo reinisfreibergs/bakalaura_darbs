@@ -18,13 +18,21 @@ def raw_cartesian_to_polar_angles(l):
 
     return [np.degrees(angle_green_red), np.degrees(angle_blue_green)]
 
-def angular_speed(start_x, start_y, end_x, end_y, frames, frequency_hertz):
-    delta_x = end_x - start_x
-    delta_y = end_y - start_y
-    delta_distance = math.sqrt(delta_x**2 + delta_y**2)
-    time = frames * 1/frequency_hertz
-    speed = delta_distance/ time
-    return speed
+
+def initial_angular_speed(angles_1, angles_2, frame_count, frequency_hertz):
+    angle_initial_1 = angles_1[0]
+    angle_end_1 = angles_1[frame_count]
+
+    angle_initial_2 = angles_2[0]
+    angle_end_2 = angles_2[frame_count]
+
+    delta_1 = math.pi/180*(angle_end_1 - angle_initial_1)
+    delta_2 = math.pi/180*(angle_end_2 - angle_initial_2)
+
+    time = frame_count * 1/frequency_hertz
+    speed_1 = delta_1/time
+    speed_2 = delta_2/time
+    return speed_1, speed_2
 
 with open('0.csv', 'r') as read_obj:
     csv_reader = reader(read_obj)
@@ -35,13 +43,13 @@ angles_1 = []
 angles_2 = []
 coordinates = coordinates[15000:]
 
-print(initial_angular_speed(coordinates,2,400,'green'))
-exit()
 for row in coordinates:
     angle = raw_cartesian_to_polar_angles(row)
     angles_1.append(angle[0])
     angles_2.append(angle[1])
 
+print(initial_angular_speed(angles_1, angles_2, 40, 400))
+exit()
 t = np.linspace(0,len(coordinates)/400, len(coordinates))
 plt.figure(figsize=(10,10))
 plt.plot(t, angles_2)
