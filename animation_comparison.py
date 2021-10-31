@@ -3,6 +3,8 @@ import numpy as np
 from scipy.integrate import odeint
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
+from csv import reader
+import math
 
 #avots piemēram https://scipython.com/blog/the-double-pendulum/
 
@@ -33,15 +35,57 @@ def calc_E(y):
             2*L1*L2*th1d*th2d*np.cos(th1-th2))
     return T + V
 
+def raw_to_pixel(l):
+    '''Convert the raw coordinates to pixel coordinates.'''
+    return [int(x)/5 for x in l]
+
+def raw_cartesian_to_polar_angles(l):
+    '''Convert the cartesian coordinates to polar coordinates.'''
+    x_red, y_red, x_green, y_green, x_blue, y_blue = raw_to_pixel(l)
+
+    angle_green_red = np.arctan((y_green-y_red)/(x_green-x_red+1e-5))
+    angle_blue_green = np.arctan((y_blue-y_green)/(x_blue-x_green+1e-5))
+
+    return [np.degrees(angle_green_red), np.degrees(angle_blue_green)]
+
+
+def initial_angular_speed(angles_1, angles_2, frame_count, frequency_hertz):
+    angle_initial_1 = angles_1[0]
+    angle_end_1 = angles_1[frame_count]
+
+    angle_initial_2 = angles_2[0]
+    angle_end_2 = angles_2[frame_count]
+
+    delta_1 = math.pi/180*(angle_end_1 - angle_initial_1)
+    delta_2 = math.pi/180*(angle_end_2 - angle_initial_2)
+
+    time = frame_count * 1/frequency_hertz
+    speed_1 = delta_1/time
+    speed_2 = delta_2/time
+    return speed_1, speed_2
+
+with open('0.csv', 'r') as read_obj:
+    csv_reader = reader(read_obj)
+    coordinates = list(csv_reader)
+
+theta1_l = []
+theta2_l = []
+
+for row in coordinates:
+    angle = raw_cartesian_to_polar_angles(row)
+    theta1_l.append(angle[0])
+    theta2_l.append(angle[1])
+
 # Maximum time, time point spacings and the time grid (all in s).
-tmax, dt = 30, 0.01
-t = np.arange(0, tmax+dt, dt)
+length = 30
+hertz = 400
+t = np.arange(0, length, 1/hertz)
 # Initial conditions: theta1, dtheta1/dt, theta2, dtheta2/dt.
-y0 = np.array([3*np.pi/7, 0, 3*np.pi/4, 0])
+omega1_l, omega2_l  = initial_angular_speed(theta1_l, theta2_l, frame_count=4, frequency_hertz=400 )
+y0 = np.array([theta1_l[0], omega1_l, theta2_l[0], omega2_l])
 
 # Do the numerical integration of the equations of motion
 y = odeint(deriv, y0, t, args=(L1, L2, m1, m2))
-
 
 theta1, theta2 = y[:,0], y[:,2]
 
@@ -51,15 +95,25 @@ y1 = -L1 * np.cos(theta1)
 x2 = x1 + L2 * np.sin(theta2)
 y2 = y1 - L2 * np.cos(theta2)
 
+x1_l = L1 * np.sin(theta1_l)
+y1_l = -L1 * np.cos(theta1_l)
+x2_l = x1_l + L2 * np.sin(theta2_l)
+y2_l = y1_l - L2 * np.cos(theta2_l)
+#(x_red, y_red, x_green, y_green, x_blue, y_blue)
 # Plotted bob circle radius
 r = 0.05
 
-def make_plot(i,ax):
-    ax.plot([0, x1[i], x2[i]], [0, y1[i], y2[i]], lw=2, c='k')
+def make_plot(i,ax,ode=True):
+    if ode:
+        t1, t2, t3, t4 = x1, x2, y1, y2
+    else:
+        t1, t2, t3, t4 = x1_l, x2_l, y1_l, y2_l
+
+    ax.plot([0, t1[i], t2[i]], [0, t3[i], t4[i]], lw=2, c='k')
     # Circles representing the anchor point of rod 1, and bobs 1 and 2.
     c0 = Circle((0, 0), r/2, fc='k', zorder=10)
-    c1 = Circle((x1[i], y1[i]), r, fc='b', ec='b', zorder=10)
-    c2 = Circle((x2[i], y2[i]), r, fc='r', ec='r', zorder=10)
+    c1 = Circle((t1[i], t3[i]), r, fc='b', ec='b', zorder=10)
+    c2 = Circle((t2[i], t4[i]), r, fc='r', ec='r', zorder=10)
     ax.add_patch(c0)
     ax.add_patch(c1)
     ax.add_patch(c2)
@@ -70,21 +124,15 @@ def make_plot(i,ax):
     ax.set_aspect('equal', adjustable='box')
     ax.axis('off')
 
-
-# Make an image every di time points, corresponding to a frame rate of fps
-# frames per second.
-# Frame rate, s-1
-fps = 20
-di = int(1/fps/dt)
 fig = plt.figure(figsize=(16, 10), dpi=72)
 ax1 = plt.subplot(121)
 ax1.set_title('Experimental')
 ax2 = plt.subplot(122)
 ax2.set_title('ODE')
 
-for i in range(0, t.size, di):
-    print(i // di, '/', t.size // di)
-    make_plot(i, ax1)
+for i in range(0, int(length * hertz), 1):
+    # print(i // di, '/', t.size // di)
+    make_plot(i, ax1, ode=False)
     ax1.set_title('Experimental', fontsize = 20)
     make_plot(i, ax2)
     ax2.set_title('ODE', fontsize = 20)
