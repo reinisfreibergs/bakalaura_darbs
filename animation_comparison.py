@@ -8,8 +8,8 @@ import math
 
 #avots piemēram https://scipython.com/blog/the-double-pendulum/
 
-L1, L2 = 1, 1
-m1, m2 = 1, 1
+L1, L2 = 0.091, 0.07
+m1, m2 = 0.01, 0.01
 g = 9.81
 
 def deriv(y, t, L1, L2, m1, m2):
@@ -43,10 +43,10 @@ def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
     x_red, y_red, x_green, y_green, x_blue, y_blue = raw_to_pixel(l)
 
-    angle_green_red = np.arctan((y_green-y_red)/(x_green-x_red+1e-5))
-    angle_blue_green = np.arctan((y_blue-y_green)/(x_blue-x_green+1e-5))
+    angle_green_red = np.arctan((y_green-y_red)/(x_green-x_red+1e-8))
+    angle_blue_green = np.arctan((y_blue-y_green)/(x_blue-x_green+1e-8))
 
-    return [np.degrees(angle_green_red), np.degrees(angle_blue_green)]
+    return [angle_green_red, angle_blue_green]
 
 
 def initial_angular_speed(angles_1, angles_2, frame_count, frequency_hertz):
@@ -56,8 +56,8 @@ def initial_angular_speed(angles_1, angles_2, frame_count, frequency_hertz):
     angle_initial_2 = angles_2[0]
     angle_end_2 = angles_2[frame_count]
 
-    delta_1 = math.pi/180*(angle_end_1 - angle_initial_1)
-    delta_2 = math.pi/180*(angle_end_2 - angle_initial_2)
+    delta_1 = (angle_end_1 - angle_initial_1)
+    delta_2 = (angle_end_2 - angle_initial_2)
 
     time = frame_count * 1/frequency_hertz
     speed_1 = delta_1/time
@@ -101,7 +101,7 @@ x2_l = x1_l + L2 * np.sin(theta2_l)
 y2_l = y1_l - L2 * np.cos(theta2_l)
 #(x_red, y_red, x_green, y_green, x_blue, y_blue)
 # Plotted bob circle radius
-r = 0.05
+r = 0.005
 
 def make_plot(i,ax,ode=True):
     if ode:
