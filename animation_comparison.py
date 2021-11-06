@@ -43,8 +43,8 @@ def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
     x_red, y_red, x_green, y_green, x_blue, y_blue = raw_to_pixel(l)
 
-    angle_green_red = np.arctan((y_green-y_red)/(x_green-x_red+1e-8))
-    angle_blue_green = np.arctan((y_blue-y_green)/(x_blue-x_green+1e-8))
+    angle_green_red = math.atan2((y_green-y_red),(x_green-x_red))
+    angle_blue_green = math.atan2((y_blue-y_green),(x_blue-x_green))
 
     return [angle_green_red, angle_blue_green]
 
