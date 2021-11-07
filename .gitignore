@@ -136,3 +136,5 @@ dmypy.json
 .idea/inspectionProfiles/Project_Default.xml
 
 .idea/workspace.xml
+
+.idea/
