@@ -57,12 +57,16 @@ class Dataset_time_series(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        x_idx, y_idx = self.data[idx]
+        x, y = self.data[idx]
 
-        x_idx = torch.FloatTensor(x_idx)
-        y_idx = torch.FloatTensor(y_idx)
+        x = torch.FloatTensor(x)
+        y = torch.FloatTensor([y])
+        y = torch.cat([
+            x[1:],
+            y,
+        ], dim=0)
 
-        return x_idx, y_idx
+        return x, y
 
 BATCH_SIZE = 3
 LEARNING_RATE = 1e-4
@@ -143,7 +147,7 @@ for epoch in range(1, EPOCHS+1):
             print(f'x {x}')
             print(f'y {y}')
             print(f'y_prim {y_prim}')
-            exit()
+
             loss = -torch.mean((y - y_prim)**2)
 
             metrics_epoch[f'{stage}_loss'].append(loss.item())
