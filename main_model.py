@@ -4,7 +4,16 @@ import numpy as np
 from csv import reader
 import math
 from sklearn.model_selection import train_test_split
+import argparse
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-learning_rate', default=1e-3, type=float)
+parser.add_argument('-batch_size', default=32, type=int)
+parser.add_argument('-epochs', default=100, type=int)
+parser.add_argument('-hidden_size', default=16, type=int)
+parser.add_argument('-sequence_len', default=3, type=int)
+parser.add_argument('-device', default='cuda', type=str)
+args = parser.parse_args()
 
 def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
@@ -68,12 +77,12 @@ class Dataset_time_series(torch.utils.data.Dataset):
 
         return x, y
 
-BATCH_SIZE = 3
-LEARNING_RATE = 1e-4
-SEQUENCE_LEN = 4
-DEVICE = 'cpu'
-EPOCHS = 1000
-HIDDEN_SIZE = 16
+BATCH_SIZE = args.batch_size
+LEARNING_RATE = args.learning_rate
+SEQUENCE_LEN = args.sequence_len
+DEVICE = args.device
+EPOCHS = args.epochs
+HIDDEN_SIZE = args.hidden_size
 
 X,Y = prepare_training_data(file='0.csv', sequence_len=SEQUENCE_LEN)
 init_dataset = Dataset_time_series(X,Y)
@@ -144,11 +153,8 @@ for epoch in range(1, EPOCHS+1):
             y = y.to(DEVICE)
 
             y_prim = model.forward(x)
-            print(f'x {x}')
-            print(f'y {y}')
-            print(f'y_prim {y_prim}')
 
-            loss = -torch.mean((y - y_prim)**2)
+            loss = torch.mean((y - y_prim)**2)
 
             metrics_epoch[f'{stage}_loss'].append(loss.item())
 
@@ -162,5 +168,5 @@ for epoch in range(1, EPOCHS+1):
             if stage in key:
                 value = np.mean(metrics_epoch[key])
                 metrics[key].append(value)
-                metrics_strs.append(f'{key}: {round(value, 2)}')
+                metrics_strs.append(f'{key}: {round(value, 5)}')
         print(f'epoch: {epoch} {" ".join(metrics_strs)}')
