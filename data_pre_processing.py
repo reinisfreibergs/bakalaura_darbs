@@ -6,8 +6,12 @@ import os
 import pandas as pd
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-sequence_len', default=4, type=int)
+parser.add_argument('-sequence_len', default=100, type=int)
+parser.add_argument('-csv_directory', default='./dummy_csv', type=str) #'../data/original/dpc_dataset_csv'
+parser.add_argument('-output_directory', default='./datasource', type=str)
 args = parser.parse_args()
+
+FULL_SEQUENCE_LEN = args.sequence_len + 1
 
 def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
@@ -33,7 +37,6 @@ def coordinates_to_sin_cos(file):
 
 def prepare_training_data(file, sequence_len):
     x_data = []
-    y_data = []
     window = []
     angles = coordinates_to_sin_cos(file)
     for row in angles:
@@ -41,42 +44,48 @@ def prepare_training_data(file, sequence_len):
             window.append(row)
         else:
             target_row = row
-
             x_data.append(window.copy())
-            y_data.append(target_row.copy())
-
             window.pop(0)
             window.append(target_row)
 
-    return x_data, y_data
-
-seq_len = args.sequence_len
-directory = '../data/original/dpc_dataset_csv'
-
-# df = pd.read_csv('lengths.csv', header=None)
-# sum_csv_lengths = sum(df.values[0])
-# number_of_csv_files = len(df.values[0])
-#
-# data_shape = (sum_csv_lengths - number_of_csv_files * seq_len, 2*seq_len)
-#
-# dataset = np.memmap(
-#     filename='dataset.mmap',
-#     dtype='float16',
-#     mode = 'r+',
-#     shape=(amount_of_samples, 2*seq_len)
-# )
-
-x,y = prepare_training_data(file='0_test_10.csv', sequence_len=seq_len)
-x_np = np.array(x)
-amount_of_samples = x_np.shape[0]
-
-test_mmap = np.memmap(filename='test.mmap',dtype='float16', mode='w+', shape=(amount_of_samples,2*seq_len))
-for i in range(amount_of_samples):
-    for n in range(seq_len):
-        test_mmap[i,n] = x_np[i,n,0]
-        test_mmap[i, (n+seq_len)] = x_np[i,n,1]
-test_mmap.flush()
-
-print(test_mmap)
+    return x_data
 
 
+if not os.path.exists(args.output_directory):
+    os.makedirs(args.output_directory)
+
+# iterate trough all csv files and find lengths
+lengths = []
+for csv in os.listdir(args.csv_directory):
+    csv_path = os.path.join(args.csv_directory, csv)
+    csv_length = pd.read_csv(csv_path).shape[0]
+    lengths.append(csv_length+1)
+
+#calculate mmap size
+sum_csv_lengths = sum(lengths)
+number_of_csv_files = len(lengths)
+data_shape = (sum_csv_lengths - number_of_csv_files * FULL_SEQUENCE_LEN, 2*FULL_SEQUENCE_LEN)
+
+data_mmap = np.memmap(
+    filename=f'{args.output_directory}/dataset.mmap',
+    dtype='float16',
+    mode='w+',
+    shape=data_shape
+)
+
+#make combinations of coordinates from every csv and write into memmap
+number = 0
+for csv_file in os.listdir(args.csv_directory):
+    x = prepare_training_data(file= os.path.join(args.csv_directory,csv_file), sequence_len=FULL_SEQUENCE_LEN)
+    x_np = np.array(x)
+    amount_of_samples = x_np.shape[0]
+
+    for i in range(amount_of_samples):
+        for n in range(FULL_SEQUENCE_LEN):
+            data_mmap[number+i, n] = x_np[i,n,0]
+            data_mmap[number+i, n+FULL_SEQUENCE_LEN] = x_np[i,n,1]
+
+    number += amount_of_samples
+
+data_mmap.flush()
+print(data_shape)
