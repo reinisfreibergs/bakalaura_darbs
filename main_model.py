@@ -11,10 +11,12 @@ parser.add_argument('-learning_rate', default=1e-3, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
 parser.add_argument('-epochs', default=100, type=int)
 parser.add_argument('-hidden_size', default=16, type=int)
-parser.add_argument('-sequence_len', default=3, type=int)
+parser.add_argument('-sequence_len', default=100, type=int)
 parser.add_argument('-device', default='cuda', type=str)
-args = parser.parse_args()
 
+parser.add_argument('-mmap_filename', default='dataset.mmap', type=str)
+args = parser.parse_args()
+SEQUENCE_LENGTH = args.sequence_len
 def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
     x_red, y_red, x_green, y_green, x_blue, y_blue = [int(x) for x in l]
@@ -57,23 +59,27 @@ def prepare_training_data(file, sequence_len):
     return x_data, y_data
 
 class Dataset_time_series(torch.utils.data.Dataset):
-    def __init__(self, X, Y):
+    def __init__(self):
         super().__init__()
 
-        self.data = list(zip(X,Y))
+        self.data = np.memmap(filename='./datasource/dataset.mmap', dtype='float16', mode='r+', shape= (375978, 202)) #(9,8)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        x, y = self.data[idx]
+        x_init = self.data[idx]
+        x_init = torch.FloatTensor(x_init)
+        y_init = torch.roll(input=x_init,shifts=-1,dims=0)
 
-        x = torch.FloatTensor(x)
-        y = torch.FloatTensor([y])
-        y = torch.cat([
-            x[1:],
-            y,
-        ], dim=0)
+        x_1 = x_init[:SEQUENCE_LENGTH]
+        y_1 = x_init[SEQUENCE_LENGTH:-2]
+
+        x_2 = y_init[:SEQUENCE_LENGTH]
+        y_2 = y_init[SEQUENCE_LENGTH:-2]
+
+        x = torch.stack([x_1,y_1], dim=1)
+        y = torch.stack([x_2,y_2], dim=1)
 
         return x, y
 
@@ -84,10 +90,9 @@ DEVICE = args.device
 EPOCHS = args.epochs
 HIDDEN_SIZE = args.hidden_size
 
-X,Y = prepare_training_data(file='0.csv', sequence_len=SEQUENCE_LEN)
-init_dataset = Dataset_time_series(X,Y)
-subsetA, subsetB = train_test_split(init_dataset, test_size=0.2, shuffle=False )
 
+init_dataset = Dataset_time_series()
+subsetA, subsetB = train_test_split(init_dataset, test_size=0.2, shuffle=False )
 
 dataset_train = torch.utils.data.DataLoader(
     dataset = subsetA,
