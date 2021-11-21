@@ -5,64 +5,42 @@ from csv import reader
 import math
 from sklearn.model_selection import train_test_split
 import argparse
+from tqdm import tqdm
+import json
+import os
+import data_pre_processing
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-learning_rate', default=1e-3, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
 parser.add_argument('-epochs', default=100, type=int)
 parser.add_argument('-hidden_size', default=16, type=int)
-parser.add_argument('-sequence_len', default=100, type=int)
+parser.add_argument('-sequence_len', default=5, type=int)
 parser.add_argument('-device', default='cuda', type=str)
 
-parser.add_argument('-mmap_filename', default='dataset.mmap', type=str)
+parser.add_argument('-csv_directory', default='./dummy_csv', type=str) #'../data/original/dpc_dataset_csv'
+parser.add_argument('-output_directory', default='./datasource', type=str)
 args = parser.parse_args()
-SEQUENCE_LENGTH = args.sequence_len
-def raw_cartesian_to_polar_angles(l):
-    '''Convert the cartesian coordinates to polar coordinates.'''
-    x_red, y_red, x_green, y_green, x_blue, y_blue = [int(x) for x in l]
-
-    angle_green_red = math.atan2((y_green-y_red),(x_green-x_red))
-    angle_blue_green = math.atan2((y_blue-y_green),(x_blue-x_green))
-
-    return [np.sin(angle_green_red), np.cos(angle_blue_green)]
-
-def coordinates_to_sin_cos(file):
-    angles = []
-    with open(file, 'r') as read_obj:
-        csv_reader = reader(read_obj)
-        coordinates = list(csv_reader)
-
-    for row in coordinates:
-        sin_cos = raw_cartesian_to_polar_angles(row)
-        angles.append([sin_cos[0], sin_cos[1]])
-
-    return angles
 
 
-def prepare_training_data(file, sequence_len):
-    x_data = []
-    y_data = []
-    window = []
-    angles = coordinates_to_sin_cos(file)
-    for row in angles:
-        if len(window) < sequence_len:
-            window.append(row)
-        else:
-            target_row = row
+dataset_name = f'{args.sequence_len}_dataset'
+if not os.path.exists(f'./datasource/{dataset_name}.json'):
+    data_pre_processing.create_memmap_dataset(args)
 
-            x_data.append(window.copy())
-            y_data.append(target_row.copy())
-
-            window.pop(0)
-            window.append(target_row)
-
-    return x_data, y_data
+with open(f'./datasource/{dataset_name}.json', 'r') as fp:
+    memmap_info = json.load(fp)
+memmap_shape = tuple(memmap_info['shape'])
 
 class Dataset_time_series(torch.utils.data.Dataset):
     def __init__(self):
         super().__init__()
 
-        self.data = np.memmap(filename='./datasource/dataset.mmap', dtype='float16', mode='r+', shape= (375978, 202)) #(9,8)
+        self.data = np.memmap(
+            filename=f'./datasource/{dataset_name}.mmap',
+            dtype='float16',
+            mode='r+',
+            shape= memmap_shape #(9,8) - dummy, (375978, 202) - 100 seq length
+        )
 
     def __len__(self):
         return len(self.data)
@@ -83,6 +61,7 @@ class Dataset_time_series(torch.utils.data.Dataset):
 
         return x, y
 
+SEQUENCE_LENGTH = args.sequence_len
 BATCH_SIZE = args.batch_size
 LEARNING_RATE = args.learning_rate
 SEQUENCE_LEN = args.sequence_len
@@ -152,7 +131,7 @@ for epoch in range(1, EPOCHS+1):
         if data_loader == dataset_test:
             stage = 'test'
 
-        for x, y in data_loader:
+        for x, y in tqdm(data_loader):
 
             x = x.to(DEVICE)
             y = y.to(DEVICE)
@@ -175,3 +154,15 @@ for epoch in range(1, EPOCHS+1):
                 metrics[key].append(value)
                 metrics_strs.append(f'{key}: {round(value, 5)}')
         print(f'epoch: {epoch} {" ".join(metrics_strs)}')
+
+    plt.clf()
+    plts = []
+    c = 0
+    for key, value in metrics.items():
+        plts += plt.plot(value, f'C{c}', label=key)
+        ax = plt.twinx()
+        c += 1
+
+    plt.legend(plts, [it.get_label() for it in plts])
+    plt.draw()
+    plt.pause(0.1)
