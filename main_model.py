@@ -11,6 +11,13 @@ import os
 import data_pre_processing
 import csv_result_parser as result_parser
 
+def param_count(model):
+    total_param_size = 0
+    for name, param in model.named_parameters():
+        each_param_size = np.prod(param.size())
+        total_param_size += each_param_size
+    return total_param_size
+
 parser = argparse.ArgumentParser()
 parser.add_argument('-learning_rate', default=1e-3, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
@@ -108,6 +115,9 @@ class Model(torch.nn.Module):
         return y_prim
 
 model = Model().to(DEVICE)
+parameter_count = param_count(model)
+print(parameter_count)
+
 optimizer = torch.optim.Adam(
     params=model.parameters(),
     lr = LEARNING_RATE
