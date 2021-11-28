@@ -9,6 +9,7 @@ from tqdm import tqdm
 import json
 import os
 import data_pre_processing
+import csv_result_parser as result_parser
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-learning_rate', default=1e-3, type=float)
@@ -114,16 +115,17 @@ optimizer = torch.optim.Adam(
 
 
 metrics = {}
-best_test_loss = float('Inf')
+best_test_loss = float(9999)
 for stage in ['train', 'test']:
     for metric in [
         'loss'
     ]:
         metrics[f'{stage}_{metric}'] = []
 
+filename = result_parser.run_file_name()
 for epoch in range(1, EPOCHS+1):
-    # metrics_csv = []
-    # metrics_csv.append(epoch)
+    metrics_csv = []
+    metrics_csv.append(epoch)
     for data_loader in [dataset_train, dataset_test]:
         metrics_epoch = {key: [] for key in metrics.keys()}
 
@@ -159,6 +161,7 @@ for epoch in range(1, EPOCHS+1):
     plts = []
     c = 0
     for key, value in metrics.items():
+        metrics_csv.append(value[-1])
         plts += plt.plot(value, f'C{c}', label=key)
         ax = plt.twinx()
         c += 1
@@ -166,3 +169,26 @@ for epoch in range(1, EPOCHS+1):
     plt.legend(plts, [it.get_label() for it in plts])
     plt.draw()
     plt.pause(0.1)
+
+    if best_test_loss > loss.item():
+        best_test_loss = loss.item()
+        torch.save(model.cpu().state_dict(), f'./results/model_test.pt')
+        model = model.to(DEVICE)
+
+    # torch.save(model.state_dict(), model_path)
+    # save chekpoint
+    # torch.save({
+    #     'epoch': epoch,
+    #     'model_state_dict': model.state_dict(),
+    #     'optimizer_state_dict': optimizer.state_dict(),
+    #     'loss': loss
+    # }, model_path)
+
+    result_parser.run_csv(file_name=f'results/{filename}',
+                        metrics=metrics_csv)
+
+result_parser.best_result_csv(result_file='11.1_comparison_results.csv',
+                            run_file=f'results/{filename}',
+                            run_name=filename,
+                            batch_size= args.batch_size,
+                            learning_rate= args.learning_rate)
