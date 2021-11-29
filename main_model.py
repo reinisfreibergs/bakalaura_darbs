@@ -22,12 +22,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-learning_rate', default=1e-3, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
 parser.add_argument('-epochs', default=100, type=int)
-parser.add_argument('-hidden_size', default=16, type=int)
+parser.add_argument('-hidden_size', default=64, type=int)
 parser.add_argument('-sequence_len', default=5, type=int)
 parser.add_argument('-device', default='cuda', type=str)
 
 parser.add_argument('-csv_directory', default='./dummy_csv', type=str) #'../data/original/dpc_dataset_csv'
 parser.add_argument('-output_directory', default='./datasource', type=str)
+parser.add_argument('-is_overfitting_test', default=True, type=lambda x: (str(x).lower() == 'true'))
 args = parser.parse_args()
 
 
@@ -59,10 +60,10 @@ class Dataset_time_series(torch.utils.data.Dataset):
         y_init = torch.roll(input=x_init,shifts=-1,dims=0)
 
         x_1 = x_init[:SEQUENCE_LENGTH]
-        y_1 = x_init[SEQUENCE_LENGTH:-2]
+        y_1 = x_init[SEQUENCE_LENGTH+1:-1]
 
         x_2 = y_init[:SEQUENCE_LENGTH]
-        y_2 = y_init[SEQUENCE_LENGTH:-2]
+        y_2 = y_init[SEQUENCE_LENGTH+1:-1]
 
         x = torch.stack([x_1,y_1], dim=1)
         y = torch.stack([x_2,y_2], dim=1)
@@ -79,18 +80,24 @@ HIDDEN_SIZE = args.hidden_size
 
 
 init_dataset = Dataset_time_series()
-subsetA, subsetB = train_test_split(init_dataset, test_size=0.2, shuffle=False )
+if args.is_overfitting_test:
+    subsetA = init_dataset
+    subsetB = init_dataset
+else:
+    subsetA, subsetB = train_test_split(init_dataset, test_size=0.2, shuffle=False )
 
 dataset_train = torch.utils.data.DataLoader(
     dataset = subsetA,
     batch_size=BATCH_SIZE,
-    shuffle=True
+    shuffle=True,
+    pin_memory = True
 )
 
 dataset_test = torch.utils.data.DataLoader(
     dataset = subsetB,
     batch_size=BATCH_SIZE,
-    shuffle=False
+    shuffle=False,
+    pin_memory = True
 )
 class Model(torch.nn.Module):
     def __init__(self):
@@ -100,7 +107,7 @@ class Model(torch.nn.Module):
             torch.nn.Linear(in_features=2, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE)
         )
-        self.lstm_layer = torch.nn.LSTM(input_size=HIDDEN_SIZE, hidden_size=HIDDEN_SIZE, batch_first=True)
+        self.lstm_layer = torch.nn.LSTM(input_size=HIDDEN_SIZE, hidden_size=HIDDEN_SIZE, batch_first=True, num_layers=2)
         self.linear_2 = torch.nn.Sequential(
             torch.nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE),
@@ -201,4 +208,5 @@ result_parser.best_result_csv(result_file='11.1_comparison_results.csv',
                             run_file=f'results/{filename}',
                             run_name=filename,
                             batch_size= args.batch_size,
-                            learning_rate= args.learning_rate)
+                            learning_rate= args.learning_rate,
+                            param_count=parameter_count)
