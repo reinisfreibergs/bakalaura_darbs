@@ -8,8 +8,9 @@ import argparse
 from tqdm import tqdm
 import json
 import os
-import data_pre_processing
+# import data_pre_processing
 import csv_result_parser as result_parser
+import time
 
 def param_count(model):
     total_param_size = 0
@@ -19,22 +20,23 @@ def param_count(model):
     return total_param_size
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-learning_rate', default=1e-3, type=float)
+parser.add_argument('-learning_rate', default=1e-4, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
 parser.add_argument('-epochs', default=100, type=int)
 parser.add_argument('-hidden_size', default=64, type=int)
-parser.add_argument('-sequence_len', default=5, type=int)
+parser.add_argument('-sequence_len', default=100, type=int)
 parser.add_argument('-device', default='cuda', type=str)
+parser.add_argument('-train_size', default=0.999999, type=int)
 
-parser.add_argument('-csv_directory', default='./dummy_csv', type=str) #'../data/original/dpc_dataset_csv'
+parser.add_argument('-csv_directory', default='../data/original/dpc_dataset_csv', type=str) #'../data/original/dpc_dataset_csv'
 parser.add_argument('-output_directory', default='./datasource', type=str)
 parser.add_argument('-is_overfitting_test', default=True, type=lambda x: (str(x).lower() == 'true'))
 args = parser.parse_args()
 
 
 dataset_name = f'{args.sequence_len}_dataset'
-if not os.path.exists(f'./datasource/{dataset_name}.json'):
-    data_pre_processing.create_memmap_dataset(args)
+# if not os.path.exists(f'./datasource/{dataset_name}.json'):
+#     data_pre_processing.create_memmap_dataset(args)
 
 with open(f'./datasource/{dataset_name}.json', 'r') as fp:
     memmap_info = json.load(fp)
@@ -60,13 +62,17 @@ class Dataset_time_series(torch.utils.data.Dataset):
         y_init = torch.roll(input=x_init,shifts=-1,dims=0)
 
         x_1 = x_init[:SEQUENCE_LENGTH]
-        y_1 = x_init[SEQUENCE_LENGTH+1:-1]
+        y_1 = x_init[SEQUENCE_LENGTH+1:2*SEQUENCE_LENGTH+1]
+        z_1 = x_init[2*SEQUENCE_LENGTH+2:3*SEQUENCE_LENGTH+2]
+        k_1 = x_init[3*SEQUENCE_LENGTH+3:4*SEQUENCE_LENGTH+3]
 
         x_2 = y_init[:SEQUENCE_LENGTH]
-        y_2 = y_init[SEQUENCE_LENGTH+1:-1]
+        y_2 = y_init[SEQUENCE_LENGTH+1:2*SEQUENCE_LENGTH+1]
+        z_2 = x_init[2*SEQUENCE_LENGTH+2:3*SEQUENCE_LENGTH+2]
+        k_2 = x_init[3*SEQUENCE_LENGTH+3:4*SEQUENCE_LENGTH+3]
 
-        x = torch.stack([x_1,y_1], dim=1)
-        y = torch.stack([x_2,y_2], dim=1)
+        x = torch.stack([x_1,y_1,z_1,k_1], dim=1) # [sin(theta1), cos(theta1), sin(theta2), cos(theta2)]
+        y = torch.stack([x_2,y_2,z_2,k_2], dim=1)
 
         return x, y
 
@@ -78,13 +84,8 @@ DEVICE = args.device
 EPOCHS = args.epochs
 HIDDEN_SIZE = args.hidden_size
 
-
 init_dataset = Dataset_time_series()
-if args.is_overfitting_test:
-    subsetA = init_dataset
-    subsetB = init_dataset
-else:
-    subsetA, subsetB = train_test_split(init_dataset, test_size=0.2, shuffle=False )
+subsetA, subsetB = train_test_split(init_dataset, train_size=args.train_size, shuffle=False )
 
 dataset_train = torch.utils.data.DataLoader(
     dataset = subsetA,
@@ -104,7 +105,7 @@ class Model(torch.nn.Module):
         super().__init__()
 
         self.linear_1 = torch.nn.Sequential(
-            torch.nn.Linear(in_features=2, out_features=HIDDEN_SIZE),
+            torch.nn.Linear(in_features=4, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE)
         )
         self.lstm_layer = torch.nn.LSTM(input_size=HIDDEN_SIZE, hidden_size=HIDDEN_SIZE, batch_first=True, num_layers=2)
@@ -112,7 +113,7 @@ class Model(torch.nn.Module):
             torch.nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE),
             torch.nn.Mish(),
-            torch.nn.Linear(in_features=HIDDEN_SIZE, out_features=2)
+            torch.nn.Linear(in_features=HIDDEN_SIZE, out_features=4)
         )
     def forward(self, x):
         y_1 = self.linear_1.forward(x)
@@ -139,8 +140,13 @@ for stage in ['train', 'test']:
     ]:
         metrics[f'{stage}_{metric}'] = []
 
+
+max_value = init_dataset.data.max()
+min_value = init_dataset.data.min()
+
 filename = result_parser.run_file_name()
 for epoch in range(1, EPOCHS+1):
+    start = time.time()
     metrics_csv = []
     metrics_csv.append(epoch)
     for data_loader in [dataset_train, dataset_test]:
@@ -157,7 +163,7 @@ for epoch in range(1, EPOCHS+1):
 
             y_prim = model.forward(x)
 
-            loss = torch.mean((y - y_prim)**2)
+            loss = ( torch.sqrt( torch.mean((y - y_prim)**2) ) ) / ( max_value - min_value )
 
             metrics_epoch[f'{stage}_loss'].append(loss.item())
 
@@ -171,7 +177,7 @@ for epoch in range(1, EPOCHS+1):
             if stage in key:
                 value = np.mean(metrics_epoch[key])
                 metrics[key].append(value)
-                metrics_strs.append(f'{key}: {round(value, 5)}')
+                metrics_strs.append(f'{key}: {round(value, 10)}')
         print(f'epoch: {epoch} {" ".join(metrics_strs)}')
 
     plt.clf()
@@ -179,33 +185,26 @@ for epoch in range(1, EPOCHS+1):
     c = 0
     for key, value in metrics.items():
         metrics_csv.append(value[-1])
-        plts += plt.plot(value, f'C{c}', label=key)
-        ax = plt.twinx()
-        c += 1
+        # plts += plt.plot(value, f'C{c}', label=key)
+        # ax = plt.twinx()
+        # c += 1
 
-    plt.legend(plts, [it.get_label() for it in plts])
-    plt.draw()
-    plt.pause(0.1)
+    # plt.legend(plts, [it.get_label() for it in plts])
+    # plt.draw()
+    # plt.pause(0.1)
 
     if best_test_loss > loss.item():
         best_test_loss = loss.item()
-        torch.save(model.cpu().state_dict(), f'./results/model_test.pt')
+        torch.save(model.cpu().state_dict(), f'./results/model_test_1.pt')
         model = model.to(DEVICE)
 
-    # torch.save(model.state_dict(), model_path)
-    # save chekpoint
-    # torch.save({
-    #     'epoch': epoch,
-    #     'model_state_dict': model.state_dict(),
-    #     'optimizer_state_dict': optimizer.state_dict(),
-    #     'loss': loss
-    # }, model_path)
-
-    result_parser.run_csv(file_name=f'results/{filename}',
+    result_parser.run_csv(file_name=f'results/{filename}_{str(args.learning_rate)}',
                         metrics=metrics_csv)
+    epoch_time = start - time.time()
+    print(epoch_time)
 
-result_parser.best_result_csv(result_file='11.1_comparison_results.csv',
-                            run_file=f'results/{filename}',
+result_parser.best_result_csv(result_file='comparison_results.csv',
+                            run_file=f'results/{filename}_{str(args.learning_rate)}',
                             run_name=filename,
                             batch_size= args.batch_size,
                             learning_rate= args.learning_rate,

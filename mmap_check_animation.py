@@ -4,11 +4,14 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+
+import torch
 from tqdm import tqdm
 from data_loader import Dataset_time_series
 from matplotlib.patches import Circle
 from matplotlib import animation
 from matplotlib.animation import PillowWriter
+import matplotlib.animation as animation
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-datasource', default='data_loader', type=str)
@@ -17,7 +20,7 @@ parser.add_argument('-learning_rate', default=1e-3, type=float)
 parser.add_argument('-batch_size', default=32, type=int)
 parser.add_argument('-epochs', default=500, type=int)
 parser.add_argument('-hidden_size', default=64, type=int)
-parser.add_argument('-sequence_len', default=4000, type=int)
+parser.add_argument('-sequence_len', default=800, type=int)
 parser.add_argument('-device', default='cuda', type=str)
 
 parser.add_argument('-csv_directory', default='../data/original/dpc_dataset_csv', type=str) #'../data/original/dpc_dataset_csv', './dummy_csv'
@@ -48,38 +51,41 @@ def make_plot(i,ax, t1, t2, t3, t4):
 
 
 init_dataset = Dataset_time_series(args)
-k = init_dataset[100] #random sample
-sin_theta1, cos_theta2 = k[1][:,0], k[1][:,1]
+k = init_dataset[-1000] #random sample
+sin_theta1, cos_theta1, sin_theta2, cos_theta2 = k[1][:,0], k[1][:,1], k[1][:,2], k[1][:,3]
 
 x1 = L1 * sin_theta1
-y1 = -L1 * np.cos(np.arcsin(sin_theta1))
-x2 = x1 + L2 * np.sin(np.arccos(cos_theta2))
+y1 = -L1 * cos_theta1
+x2 = x1 + L2 * sin_theta2
 y2 = y1 - L2 * cos_theta2
 
 
-fig = plt.figure(figsize=(16, 10), dpi=72)
-ax = plt.subplot()
-
-for i in range(0, 4000, 1):
-    # print(i // di, '/', t.size // di)
-    make_plot(i,ax, x1, x2, y1, y2)
-    ax.set_title('Experimental', fontsize = 20)
-    plt.draw()
-    plt.pause(0.1)
-    ax.clear()
-
-
-# def animate(i):
-#     ln1.set_data([0, x1[i], x2[i]], [0, y1[i], y2[i]])
+# fig = plt.figure(figsize=(16, 10), dpi=72)
+# ax = plt.subplot()
 #
-# fig, ax = plt.subplots(1,1, figsize=(8,8))
-# ln1, = plt.plot([], [], lw=2, c='k', markersize=8)
-#
-# ax.set_xlim(-L1-L2-r, L1+L2+r)
-# ax.set_ylim(-L1-L2-r, L1+L2+r)
-# ax.set_aspect('equal', adjustable='box')
-# ax.axis('off')
-#
-# ani = animation.FuncAnimation(fig, animate, frames=4000, interval=1000/400)
-# # ani.save('pen.gif',writer='pillow',fps=400)
+# for i in range(0, 4000, 1):
+#     # print(i // di, '/', t.size // di)
+#     make_plot(i,ax, x1, x2, y1, y2)
+#     ax.set_title('Experimental', fontsize = 20)
+#     plt.draw()
+#     plt.pause(0.1)
+#     ax.clear()
+
+
+def animate(i):
+    ln1.set_data([0, x1[i], x2[i]], [0, y1[i], y2[i]])
+
+fig, ax = plt.subplots(1,1, figsize=(8,8))
+ln1, = plt.plot([], [], lw=2, c='k', markersize=8)
+
+ax.set_xlim(-L1-L2-r, L1+L2+r)
+ax.set_ylim(-L1-L2-r, L1+L2+r)
+ax.set_aspect('equal', adjustable='box')
+ax.axis('off')
+
+# Writer = animation.writers['ffmpeg']
+# writer1 = Writer(fps = 400)
+ani = animation.FuncAnimation(fig, animate, frames=800, interval=1000/400, repeat=False)
+# ani = animation.FuncAnimation(fig, animate, frames=800, repeat=False)
+# ani.save('test.mp4', fps=150) #150??? 1000/400 = 2.5 ms per frame -> 400 fps
 plt.show()
