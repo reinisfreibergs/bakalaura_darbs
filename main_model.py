@@ -1,3 +1,4 @@
+import copy
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
@@ -26,17 +27,22 @@ parser.add_argument('-epochs', default=100, type=int)
 parser.add_argument('-hidden_size', default=64, type=int)
 parser.add_argument('-sequence_len', default=100, type=int)
 parser.add_argument('-device', default='cuda', type=str)
-parser.add_argument('-train_size', default=0.999999, type=int)
+parser.add_argument('-train_size', default=0.8, type=int)
+parser.add_argument('-lstm_layers', default=2, type=int)
 
 parser.add_argument('-csv_directory', default='../data/original/dpc_dataset_csv', type=str) #'../data/original/dpc_dataset_csv'
 parser.add_argument('-output_directory', default='./datasource', type=str)
-parser.add_argument('-is_overfitting_test', default=True, type=lambda x: (str(x).lower() == 'true'))
+
+parser.add_argument('-early_stopping_patience', default=10, type=int)
+parser.add_argument('-early_stopping_param', default='test_loss', type=str)
+parser.add_argument('-early_stopping_delta_percent', default=1e-3, type=float)
+
 args = parser.parse_args()
 
 
 dataset_name = f'{args.sequence_len}_dataset'
-# if not os.path.exists(f'./datasource/{dataset_name}.json'):
-#     data_pre_processing.create_memmap_dataset(args)
+if not os.path.exists(f'./datasource/{dataset_name}.json'):
+    data_pre_processing.create_memmap_dataset(args)
 
 with open(f'./datasource/{dataset_name}.json', 'r') as fp:
     memmap_info = json.load(fp)
@@ -50,7 +56,7 @@ class Dataset_time_series(torch.utils.data.Dataset):
             filename=f'./datasource/{dataset_name}.mmap',
             dtype='float16',
             mode='r+',
-            shape= memmap_shape #(9,8) - dummy, (375978, 202) - 100 seq length
+            shape= memmap_shape
         )
 
     def __len__(self):
@@ -108,7 +114,7 @@ class Model(torch.nn.Module):
             torch.nn.Linear(in_features=4, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE)
         )
-        self.lstm_layer = torch.nn.LSTM(input_size=HIDDEN_SIZE, hidden_size=HIDDEN_SIZE, batch_first=True, num_layers=2)
+        self.lstm_layer = torch.nn.LSTM(input_size=HIDDEN_SIZE, hidden_size=HIDDEN_SIZE, batch_first=True, num_layers=args.lstm_layers)
         self.linear_2 = torch.nn.Sequential(
             torch.nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
             torch.nn.LayerNorm(normalized_shape=HIDDEN_SIZE),
@@ -144,11 +150,15 @@ for stage in ['train', 'test']:
 max_value = init_dataset.data.max()
 min_value = init_dataset.data.min()
 
+metric_before = {}
+early_stopping_patience = 0
+
 filename = result_parser.run_file_name()
 for epoch in range(1, EPOCHS+1):
     start = time.time()
     metrics_csv = []
     metrics_csv.append(epoch)
+    metric_mean = {}
     for data_loader in [dataset_train, dataset_test]:
         metrics_epoch = {key: [] for key in metrics.keys()}
 
@@ -156,7 +166,7 @@ for epoch in range(1, EPOCHS+1):
         if data_loader == dataset_test:
             stage = 'test'
 
-        for x, y in tqdm(data_loader):
+        for x, y in data_loader:
 
             x = x.to(DEVICE)
             y = y.to(DEVICE)
@@ -195,16 +205,41 @@ for epoch in range(1, EPOCHS+1):
 
     if best_test_loss > loss.item():
         best_test_loss = loss.item()
-        torch.save(model.cpu().state_dict(), f'./results/model_test_1.pt')
+        torch.save(model.cpu().state_dict(), f'./results/model_test_{args.sequence_len}_single_epoch.pt')
         model = model.to(DEVICE)
 
-    result_parser.run_csv(file_name=f'results/{filename}_{str(args.learning_rate)}',
+    result_parser.run_csv(file_name=f'./results/{filename}_{str(args.learning_rate)}.csv',
                         metrics=metrics_csv)
-    epoch_time = start - time.time()
+    epoch_time = time.time() - start
     print(epoch_time)
 
+        # early stopping
+    percent_improvement = 0
+    if epoch > 1:
+        if metric_before[args.early_stopping_param] != 0:
+            if np.isnan(metrics[args.early_stopping_param][-1]) or np.isinf(metrics[args.early_stopping_param][-1]):
+                print('loss isnan break')
+                break
+
+            percent_improvement = -(metrics[args.early_stopping_param][-1] - metric_before[args.early_stopping_param][-1]) / \
+                                  metric_before[args.early_stopping_param][-1]
+
+            print(f' percent_improvement {percent_improvement}')
+            if np.isnan(percent_improvement):
+                percent_improvement = 0
+
+            if metrics[args.early_stopping_param][-1] >= 0:
+                if args.early_stopping_delta_percent > percent_improvement:
+                    early_stopping_patience += 1
+                else:
+                    early_stopping_patience = 0
+        if early_stopping_patience > args.early_stopping_patience:
+            print('early_stopping_patience break')
+            break
+    metric_before = copy.deepcopy(metrics)
+
 result_parser.best_result_csv(result_file='comparison_results.csv',
-                            run_file=f'results/{filename}_{str(args.learning_rate)}',
+                            run_file=f'results/{filename}_{str(args.learning_rate)}.csv',
                             run_name=filename,
                             batch_size= args.batch_size,
                             learning_rate= args.learning_rate,

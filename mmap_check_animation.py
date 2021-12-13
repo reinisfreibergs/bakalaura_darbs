@@ -54,10 +54,13 @@ init_dataset = Dataset_time_series(args)
 k = init_dataset[-1000] #random sample
 sin_theta1, cos_theta1, sin_theta2, cos_theta2 = k[1][:,0], k[1][:,1], k[1][:,2], k[1][:,3]
 
-x1 = L1 * sin_theta1
-y1 = -L1 * cos_theta1
-x2 = x1 + L2 * sin_theta2
-y2 = y1 - L2 * cos_theta2
+theta1 = np.arctan2(sin_theta1, cos_theta1)
+theta2 = np.arctan2(sin_theta2, cos_theta2)
+
+x1 = L1 * np.sin(theta1)
+y1 = -L1 * np.cos(theta1)
+x2 = x1 + L2 * np.sin(theta2)
+y2 = y1 - L2 * np.cos(theta2)
 
 
 # fig = plt.figure(figsize=(16, 10), dpi=72)
@@ -87,5 +90,5 @@ ax.axis('off')
 # writer1 = Writer(fps = 400)
 ani = animation.FuncAnimation(fig, animate, frames=800, interval=1000/400, repeat=False)
 # ani = animation.FuncAnimation(fig, animate, frames=800, repeat=False)
-# ani.save('test.mp4', fps=150) #150??? 1000/400 = 2.5 ms per frame -> 400 fps
+ani.save('test.mp4', fps=150) #150??? 1000/400 = 2.5 ms per frame -> 400 fps
 plt.show()

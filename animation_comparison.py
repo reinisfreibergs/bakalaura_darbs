@@ -103,12 +103,7 @@ y2_l = y1_l - L2 * np.cos(theta2_l)
 # Plotted bob circle radius
 r = 0.005
 
-def make_plot(i,ax,ode=True):
-    if ode:
-        t1, t2, t3, t4 = x1, x2, y1, y2
-    else:
-        t1, t2, t3, t4 = x1_l, x2_l, y1_l, y2_l
-
+def make_plot(i,ax, t1, t2, t3, t4):
     ax.plot([0, t1[i], t2[i]], [0, t3[i], t4[i]], lw=2, c='k')
     # Circles representing the anchor point of rod 1, and bobs 1 and 2.
     c0 = Circle((0, 0), r/2, fc='k', zorder=10)
@@ -124,7 +119,7 @@ def make_plot(i,ax,ode=True):
     ax.set_aspect('equal', adjustable='box')
     ax.axis('off')
 
-fig = plt.figure(figsize=(16, 10), dpi=72)
+fig, ax = plt.figure(figsize=(16, 10), dpi=72)
 ax1 = plt.subplot(121)
 ax1.set_title('Experimental')
 ax2 = plt.subplot(122)
@@ -132,9 +127,9 @@ ax2.set_title('ODE')
 
 for i in range(0, int(length * hertz), 1):
     # print(i // di, '/', t.size // di)
-    make_plot(i, ax1, ode=False)
+    make_plot(i, ax1, x1_l, x2_l, y1_l, y2_l)
     ax1.set_title('Experimental', fontsize = 20)
-    make_plot(i, ax2)
+    make_plot(i, ax2, x1, x2, y1, y2)
     ax2.set_title('ODE', fontsize = 20)
     plt.tight_layout()
     plt.draw()
