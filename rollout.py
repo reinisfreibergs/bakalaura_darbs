@@ -2,19 +2,22 @@ import matplotlib.pyplot as plt
 import torch
 import matplotlib.animation as animation
 import numpy as np
-from csv import reader
 import math
-from sklearn.model_selection import train_test_split
-import argparse
-from tqdm import tqdm
-import json
-import os
-import data_pre_processing
-import csv_result_parser as result_parser
-import time
+from csv import reader
 
 HIDDEN_SIZE = 64
 FRAMES = 800
+SEQUENCE_LENGTH = 100
+START = 0
+
+def raw_cartesian_to_polar_angles(l):
+    '''Convert the cartesian coordinates to polar coordinates.'''
+    x_red, y_red, x_green, y_green, x_blue, y_blue = [int(x) for x in l]
+
+    angle_green_red = math.atan2((y_green-y_red),(x_green-x_red))
+    angle_blue_green = math.atan2((y_blue-y_green),(x_blue-x_green))
+
+    return [np.sin(angle_green_red), np.cos(angle_green_red), np.sin(angle_blue_green), np.cos(angle_blue_green)]
 
 class Model(torch.nn.Module):
     def __init__(self):
@@ -43,27 +46,17 @@ model = Model()
 model.load_state_dict(torch.load(model_path))
 model.eval()
 
-start_angle_1 = 45
-start_angle_2 = 15
-angle_1 = 44.98
-angle_2 = 14.98
-angle_11 = 44.95
-angle_22 = 14.95
+with open('0.csv', 'r') as read_obj:
+    csv_reader = reader(read_obj)
+    coordinates = list(csv_reader)
 
-start_sin_cos = [[math.sin(math.radians(start_angle_1)),
-                 math.cos(math.radians(start_angle_1)),
-                 math.sin(math.radians(start_angle_2)),
-                 math.cos(math.radians(start_angle_2))],
-                 [math.sin(math.radians(angle_1)),
-                 math.cos(math.radians(angle_1)),
-                 math.sin(math.radians(angle_2)),
-                 math.cos(math.radians(angle_2))],
-                 [math.sin(math.radians(angle_11)),
-                 math.cos(math.radians(angle_11)),
-                 math.sin(math.radians(angle_22)),
-                 math.cos(math.radians(angle_22))]]
+start_sin_cos = []
+for row_idx in range(START, START+SEQUENCE_LENGTH):
+    angle = coordinates[row_idx]
+    angle = raw_cartesian_to_polar_angles(angle)
+    start_sin_cos.append(angle)
 
-start = torch.reshape(torch.FloatTensor(start_sin_cos), shape=(1,3,4))
+start = torch.reshape(torch.FloatTensor(start_sin_cos), shape=(1,SEQUENCE_LENGTH,4))
 
 angles = torch.FloatTensor()
 angles = torch.cat(tensors=(angles, start), dim=1)
@@ -108,5 +101,5 @@ ax.set_aspect('equal', adjustable='box')
 ax.axis('off')
 
 ani = animation.FuncAnimation(fig, animate, frames=FRAMES, interval=1000/400, repeat=False)
-ani.save('rollout_single_epoch.mp4', fps=130) #150??? 1000/400 = 2.5 ms per frame -> 400 fps
+ani.save('rollout_single_epoch_test_100_2.mp4', fps=130) #150??? 1000/400 = 2.5 ms per frame -> 400 fps
 # plt.show()
