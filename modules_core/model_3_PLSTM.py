@@ -11,6 +11,7 @@ def set_grad(var):
         var.grad = grad
     return hook
 
+
 class GradMod(torch.autograd.Function):
     """
     We can implement our own custom autograd Functions by subclassing
@@ -130,18 +131,18 @@ class PLSTM(nn.Module):
             # batch the computations into a single matrix multiplication
             gates = x_t @ self.W + h_t @ self.U + self.bias
 
-            # i_t, f_t, g_t, o_t = (
-            #     torch.sigmoid(gates[:, :HS]), # input
-            #     torch.sigmoid(gates[:, HS:HS*2]), # forget
-            #     torch.tanh(gates[:, HS*2:HS*3]),
-            #     torch.sigmoid(gates[:, HS*3:]), # output
-            # )
             i_t, f_t, g_t, o_t = (
-                torch.sigmoid(self.layer_norm_i.forward(gates[:, :HS])), # input
-                torch.sigmoid(self.layer_norm_f.forward(gates[:, HS:HS*2])), # forget
-                torch.tanh(self.layer_norm_g.forward(gates[:, HS*2:HS*3])),
-                torch.sigmoid(self.layer_norm_o.forward(gates[:, HS*3:])), # output
+                torch.sigmoid(gates[:, :HS]), # input
+                torch.sigmoid(gates[:, HS:HS*2]), # forget
+                torch.tanh(gates[:, HS*2:HS*3]),
+                torch.sigmoid(gates[:, HS*3:]), # output
             )
+            # i_t, f_t, g_t, o_t = (
+            #     torch.sigmoid(self.layer_norm_i.forward(gates[:, :HS])), # input
+            #     torch.sigmoid(self.layer_norm_f.forward(gates[:, HS:HS*2])), # forget
+            #     torch.tanh(self.layer_norm_g.forward(gates[:, HS*2:HS*3])),
+            #     torch.sigmoid(self.layer_norm_o.forward(gates[:, HS*3:])), # output
+            # )
             c_t = f_t * c_t + i_t * g_t
             h_t = o_t * torch.tanh(c_t)
 
@@ -169,10 +170,10 @@ class Model(torch.nn.Module):
             in_features=4,
             out_features=args.hidden_size
         )
-        # self.ff = torch.nn.Sequential(
-        #     torch.nn.Linear(in_features=4, out_features=args.hidden_size),
-        #     torch.nn.LayerNorm(normalized_shape=args.hidden_size)
-        # )
+        self.ff = torch.nn.Sequential(
+            torch.nn.Linear(in_features=4, out_features=args.hidden_size),
+            torch.nn.LayerNorm(normalized_shape=args.hidden_size)
+        )
 
         layers = []
         for _ in range(args.lstm_layers):
@@ -186,10 +187,10 @@ class Model(torch.nn.Module):
             in_features=args.hidden_size,
             out_features=4
         )
-        # self.fc = torch.nn.Sequential(
-        #     torch.nn.LayerNorm(normalized_shape=args.hidden_size),
-        #     torch.nn.Linear(in_features=args.hidden_size, out_features=4)
-        # )
+        self.fc = torch.nn.Sequential(
+            torch.nn.LayerNorm(normalized_shape=args.hidden_size),
+            torch.nn.Linear(in_features=args.hidden_size, out_features=4)
+        )
 
     def forward(self, x):
         # B, Seq, F => B, 28, 28
