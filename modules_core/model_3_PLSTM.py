@@ -166,13 +166,10 @@ class Model(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.ff = torch.nn.Linear(
-            in_features=4,
-            out_features=args.hidden_size
-        )
+
         self.ff = torch.nn.Sequential(
             torch.nn.Linear(in_features=4, out_features=args.hidden_size),
-            torch.nn.LayerNorm(normalized_shape=args.hidden_size)
+            torch.nn.BatchNorm1d(num_features=args.sequence_len)
         )
 
         layers = []
@@ -183,12 +180,10 @@ class Model(torch.nn.Module):
             ))
         self.lstm = torch.nn.Sequential(*layers)
 
-        self.fc = torch.nn.Linear(
-            in_features=args.hidden_size,
-            out_features=4
-        )
         self.fc = torch.nn.Sequential(
-            torch.nn.LayerNorm(normalized_shape=args.hidden_size),
+            torch.nn.Linear(in_features=args.hidden_size, out_features=args.hidden_size),
+            torch.nn.BatchNorm1d(num_features=args.sequence_len),
+            torch.nn.Mish(),
             torch.nn.Linear(in_features=args.hidden_size, out_features=4)
         )
 
@@ -206,5 +201,4 @@ class Model(torch.nn.Module):
         # z_1 = self.lstm.forward(z_0) # B, Seq, Hidden_size
 
         logits = self.fc.forward(z_1)
-        y_prim = torch.softmax(logits, dim=1)
-        return y_prim
+        return logits
