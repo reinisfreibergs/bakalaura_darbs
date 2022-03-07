@@ -13,7 +13,7 @@ from datetime import datetime
 from modules.csv_utils_2 import CsvUtils2
 from modules.file_utils import FileUtils
 from modules.args_utils import ArgsUtils
-
+import math
 
 def param_count(model):
     total_param_size = 0
@@ -25,15 +25,37 @@ def param_count(model):
 L1, L2 = 0.091, 0.07
 m1, m2 = 0.01, 0.01
 g = 9.81
+R = 0.019
+mu = 1e-5
+c1 = 6*math.pi*mu*R
+c2 = c1
 
 def deriv(theta1, z1, theta2, z2):
     """Return the first derivatives of y = theta1, z1, theta2, z2."""
     c, s = torch.cos(theta1-theta2), torch.sin(theta1-theta2)
 
-    z1dot = (m2*g*torch.sin(theta2)*c - m2*s*(L1*z1**2*c + L2*z2**2) -
-             (m1+m2)*g*torch.sin(theta1)) / L1 / (m1 + m2*s**2)
-    z2dot = ((m1+m2)*(L1*z1**2*s - g*torch.sin(theta2) + g*torch.sin(theta1)*c) +
-             m2*L2*z2**2*s*c) / L2 / (m1 + m2*s**2)
+    z1dot = -(g * torch.sin(theta1)*(m1+m2) \
+            + L1**2*theta2*(c1+c2) \
+            + L2*m2*s*z2**2 \
+            - L2*c2*c*z2 \
+            - g*m2*c*torch.sin(theta2) \
+            - L1*L2*c2*c**2*z1 \
+            + L1*m2*c*s*z1**2 \
+            + L1*L2*c2*c*z2) \
+            / (L1*(m1 + m2) - L1*m2*c**2)
+
+    z2dot = (g*m2**2*c*torch.sin(theta1) \
+            - g*m2**2*torch.sin(theta2) \
+            - L2*c2*z2*(m1+m2) \
+            + L1*m2**2*s*z1**2 \
+            - g*m1*m2*torch.sin(theta2) \
+            + L2*m2**2*c*s*z2**2 \
+            + g*m1*m2*c*torch.sin(theta1) \
+            + L1**2*c1*m2*c*z1 \
+            + L1**2*c2*m2*c*z1 \
+            + L1*m1*m2*s*z1**2 \
+            + L1*L2*c2*c* (-m1*z1 -m2*z1 + m2*z2 ) ) \
+            / (L2*m2**2 - L2*m2**2*c**2 + L2*m1*m2)
 
     return torch.stack((z1dot, z2dot), dim=2)
 
@@ -61,11 +83,10 @@ def ode_loss(y_prim, x):
 def loss_rollout(x, hidden_vect):
     angles = torch.FloatTensor().to(args.device)
     start = x
-    with torch.no_grad():
-        for i in range(args.rollout_length):
-            angles_current, hidden_vect = model.forward(start, hidden_vect)
-            angles = torch.cat(tensors=(angles, angles_current[:,-1,:].unsqueeze(dim=0)), dim=1)
-            start = angles_current[:,-1,:].unsqueeze(dim=1)
+    for i in range(args.rollout_length):
+        angles_current, hidden_vect = model.forward(start, hidden_vect)
+        angles = torch.cat(tensors=(angles, angles_current[:,-1,:].unsqueeze(dim=0)), dim=1)
+        start = angles_current[:,-1,:].unsqueeze(dim=1)
 
     loss = torch.mean(torch.abs(angles_current)) #difference between 0 across all batches
     return loss
@@ -171,6 +192,7 @@ if __name__ == '__main__':
             if data_loader == dataset_test:
                 stage = 'test'
                 model = model.eval()
+                torch.set_grad_enabled(True)
 
             for x, y in tqdm(data_loader):
 
@@ -216,7 +238,7 @@ if __name__ == '__main__':
         best_metrics['min_train_loss'] = min_train_loss
         best_metrics['min_test_loss'] = min_test_loss
 
-
+        torch.save(model_module.cpu().state_dict(), f'{path_run}/model_test_{args.sequence_len}_checkpoint.pt')
         if best_test_loss > loss.item():
             best_test_loss = loss.item()
             torch.save(model_module.cpu().state_dict(), f'{path_run}/model_test_{args.sequence_len}_test_loss.pt')

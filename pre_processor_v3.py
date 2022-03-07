@@ -7,6 +7,7 @@ import pandas as pd
 import json
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import math
 
 def raw_cartesian_to_polar_angles(l):
     '''Convert the cartesian coordinates to polar coordinates.'''
@@ -14,6 +15,10 @@ def raw_cartesian_to_polar_angles(l):
 
     angle_green_red = math.atan2((y_green-y_red),(x_green-x_red))
     angle_blue_green = math.atan2((y_blue-y_green),(x_blue-x_green))
+    if angle_green_red < 0 :
+        angle_green_red = 2*math.pi + angle_green_red # change range from [-pi, pi] to [0, 2pi]
+    if angle_blue_green < 0:
+        angle_blue_green = 2*math.pi + angle_blue_green
 
     return [angle_green_red, angle_blue_green]
 

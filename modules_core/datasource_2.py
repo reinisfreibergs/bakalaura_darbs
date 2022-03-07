@@ -36,7 +36,7 @@ class Dataset_time_series(torch.utils.data.Dataset):
 
 def get_data_loaders(args):
     init_dataset = Dataset_time_series(args)
-    subsetA, subsetB = train_test_split(init_dataset, train_size=args.train_size, shuffle=False )
+    subsetA, subsetB = train_test_split(init_dataset, train_size=args.train_size, shuffle=True, random_state=1)
 
     max_value = init_dataset.data.max()
     min_value = init_dataset.data.min()
@@ -46,7 +46,6 @@ def get_data_loaders(args):
         batch_size=args.batch_size,
         shuffle=True,
         pin_memory = True,
-        drop_last = True,
         num_workers = args.num_workers
     )
 
@@ -55,7 +54,6 @@ def get_data_loaders(args):
         batch_size=args.batch_size,
         shuffle=False,
         pin_memory = True,
-        drop_last = True,
         num_workers = args.num_workers
     )
 
